@@ -1,0 +1,11 @@
+[Unit]
+Description=Verschlüsselte Sicherung der Vermietungsanwendung
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/vermietung/backup.env
+ExecStart=/bin/bash -c 'exec bash "$VERMIETUNG_PROJECT_DIR/infra/backup/backup.sh"'
+Nice=10
+UMask=0077

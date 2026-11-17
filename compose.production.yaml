@@ -1,0 +1,129 @@
+name: vermietungsverwaltung-prod
+
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-private: &private
+  init: true
+  restart: unless-stopped
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  tmpfs: ["/tmp:rw,nosuid,nodev,size=256m,mode=1777"]
+  logging: *logs
+
+services:
+  postgres:
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vermietung
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD fehlt}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD fehlt}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-runtime-role.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "vermietung"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *logs
+
+  migrate:
+    build: { context: ".", target: migrate }
+    environment:
+      DATABASE_URL: ${DATABASE_MIGRATION_URL:?DATABASE_MIGRATION_URL fehlt}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    logging: *logs
+
+  clamav:
+    image: clamav/clamav:1.4.6-debian
+    restart: unless-stopped
+    volumes: ["clamav-data:/var/lib/clamav"]
+    networks: [scan, updates]
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    logging: *logs
+
+  app:
+    <<: *private
+    build: { context: ".", target: app }
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL fehlt}
+      BETTER_AUTH_URL: https://${APP_DOMAIN:?APP_DOMAIN fehlt}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET fehlt}
+      AUTH_CLIENT_IP_HEADER: x-vermietung-client-ip
+      REQUIRE_MALWARE_SCAN: "1"
+      CLAMAV_HOST: clamav
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      clamav: { condition: service_started }
+    volumes: ["private-data:/var/lib/vermietung"]
+    networks: [front, backend, scan]
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *private
+    build: { context: ".", target: worker }
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL fehlt}
+      CHROMIUM_SANDBOX: ${CHROMIUM_SANDBOX:-0}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    volumes: ["private-data:/var/lib/vermietung"]
+    networks: [backend]
+    mem_limit: 1536m
+    pids_limit: 160
+    shm_size: 256m
+    stop_grace_period: 90s
+    healthcheck:
+      test: ["CMD", "node", "-e", "const f=require('node:fs'); if(Date.now()-Number(f.readFileSync('/tmp/vermietung-worker-health','utf8'))>120000)process.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN fehlt}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes: ["./infra/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data", "caddy-config:/config"]
+    depends_on:
+      app: { condition: service_healthy }
+    networks: [edge, front]
+    logging: *logs
+
+networks:
+  edge: {}
+  updates: {}
+  front: { internal: true }
+  backend: { internal: true }
+  scan: { internal: true }
+
+volumes:
+  postgres-data:
+  private-data:
+  caddy-data:
+  caddy-config:
+  clamav-data:

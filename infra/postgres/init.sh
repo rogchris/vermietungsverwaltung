@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
+\getenv runtime_password POSTGRES_APP_PASSWORD
+CREATE ROLE vermietung_app LOGIN PASSWORD :'runtime_password';
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO vermietung_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO vermietung_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO vermietung_app;
+SQL

@@ -1,0 +1,11 @@
+{$APP_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	@upload path /api/dokumente
+	request_body @upload {
+		max_size 11MB
+	}
+	reverse_proxy app:3000 {
+		header_up X-Vermietung-Client-IP {remote_host}
+	}
+}

@@ -1,0 +1,544 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  VIEWER
+}
+
+model User {
+  id               String       @id
+  name             String
+  email            String       @unique
+  emailVerified    Boolean      @default(false)
+  image            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  twoFactorEnabled Boolean      @default(false)
+  role             Role         @default(VIEWER)
+  sessions         Session[]
+  accounts         Account[]
+  twoFactors       TwoFactor[]
+  audits           AuditEvent[]
+  reportJobs       ReportJob[]
+}
+
+model Session {
+  id          String   @id
+  expiresAt   DateTime
+  token       String   @unique
+  mfaVerified Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  ipAddress   String?
+  userAgent   String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  verified                Boolean   @default(false)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  userId                  String    @unique
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
+
+model Bootstrap {
+  id String @id
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  action     String
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  targetType String?
+  targetId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+}
+
+enum PropertyType {
+  SINGLE_FAMILY
+  MULTI_FAMILY
+  CONDOMINIUM
+  MIXED_USE
+  OTHER
+}
+
+enum UnitStatus {
+  RENTED
+  VACANT
+  RENOVATION
+  UNRENTABLE
+  ARCHIVED
+}
+
+enum UnitUse {
+  RESIDENTIAL
+  COMMERCIAL
+  PARKING
+  OTHER
+}
+
+enum RentModel {
+  FIXED
+  INDEXED
+  STEPPED
+}
+
+enum ChargeMode {
+  ADVANCE
+  FLAT_RATE
+  NONE
+}
+
+model Property {
+  id            String       @id @default(uuid())
+  name          String
+  street        String
+  houseNumber   String
+  postalCode    String
+  city          String
+  state         String
+  type          PropertyType
+  builtYear     Int?
+  landArea      Decimal?     @db.Decimal(12, 2)
+  livingArea    Decimal      @db.Decimal(12, 2)
+  purchaseDate  DateTime?    @db.Date
+  purchasePrice Decimal?     @db.Decimal(14, 2)
+  description   String       @default("")
+  archivedAt    DateTime?
+  version       Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  units         RentalUnit[]
+  documents     Document[]
+  reportJobs    ReportJob[]
+  payments      Payment[]
+  expenses      Expense[]
+
+  acquisitionSource AcquisitionProject?
+
+  @@index([archivedAt, name])
+}
+
+model RentalUnit {
+  id            String     @id @default(uuid())
+  propertyId    String
+  property      Property   @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  label         String
+  floor         String?
+  livingArea    Decimal    @db.Decimal(12, 2)
+  rooms         Decimal?   @db.Decimal(5, 2)
+  use           UnitUse
+  status        UnitStatus @default(VACANT)
+  features      String     @default("")
+  parkingSpaces Int        @default(0)
+  version       Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  leases        Lease[]
+  documents     Document[]
+  expenses      Expense[]
+
+  @@unique([propertyId, label])
+}
+
+model Tenant {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  street       String
+  houseNumber  String
+  postalCode   String
+  city         String
+  countryCode  String        @default("DE") @db.Char(2)
+  phone        String?
+  email        String?
+  anonymizedAt DateTime?
+  archivedAt   DateTime?
+  version      Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  leases       LeaseTenant[]
+
+  @@index([lastName, firstName])
+}
+
+model Lease {
+  id           String           @id @default(uuid())
+  unitId       String
+  unit         RentalUnit       @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  startsOn     DateTime         @db.Date
+  endsOn       DateTime?        @db.Date
+  rentModel    RentModel
+  dueDay       Int
+  deposit      Decimal          @db.Decimal(14, 2)
+  depositTerms String           @default("")
+  version      Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tenants      LeaseTenant[]
+  terms        RentCondition[]
+  documents    Document[]
+  receivables  RentReceivable[]
+
+  @@index([unitId, startsOn])
+}
+
+model LeaseTenant {
+  leaseId  String
+  tenantId String
+  lease    Lease  @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([leaseId, tenantId])
+  @@index([tenantId])
+}
+
+model RentCondition {
+  id             String     @id @default(uuid())
+  leaseId        String
+  lease          Lease      @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  effectiveFrom  DateTime   @db.Date
+  baseRent       Decimal    @db.Decimal(14, 2)
+  operatingCosts Decimal    @db.Decimal(14, 2)
+  operatingMode  ChargeMode
+  heatingCosts   Decimal    @db.Decimal(14, 2)
+  heatingMode    ChargeMode
+  createdAt      DateTime   @default(now())
+
+  @@unique([leaseId, effectiveFrom])
+}
+
+enum ReceivableKind {
+  RENT
+}
+
+enum ExpenseCategory {
+  MAINTENANCE
+  INSURANCE
+  MANAGEMENT
+  FINANCING
+  OPERATING
+  MODERNIZATION
+  OTHER
+}
+
+model RentReceivable {
+  id          String         @id @default(uuid())
+  leaseId     String
+  lease       Lease          @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  period      DateTime       @db.Date
+  kind        ReceivableKind @default(RENT)
+  revision    Int            @default(0)
+  dueOn       DateTime       @db.Date
+  baseRent    Decimal        @db.Decimal(16, 2)
+  operating   Decimal        @db.Decimal(16, 2)
+  heating     Decimal        @db.Decimal(16, 2)
+  bookedOn    DateTime       @db.Date
+  createdAt   DateTime       @default(now())
+  voidedOn    DateTime?      @db.Date
+  voidReason  String?
+  allocations Allocation[]
+
+  @@unique([leaseId, period, kind, revision])
+  @@index([period])
+}
+
+model Payment {
+  id          String       @id
+  propertyId  String
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  receivedOn  DateTime     @db.Date
+  amount      Decimal      @db.Decimal(16, 2)
+  note        String       @default("")
+  createdAt   DateTime     @default(now())
+  voidedOn    DateTime?    @db.Date
+  voidReason  String?
+  allocations Allocation[]
+
+  @@index([propertyId, receivedOn])
+  @@index([receivedOn])
+}
+
+model Allocation {
+  id           String         @id
+  paymentId    String
+  payment      Payment        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  receivableId String
+  receivable   RentReceivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  amount       Decimal        @db.Decimal(16, 2)
+  allocatedOn  DateTime       @db.Date
+  createdAt    DateTime       @default(now())
+  voidedOn     DateTime?      @db.Date
+  voidReason   String?
+
+  @@index([paymentId])
+  @@index([receivableId])
+}
+
+model Expense {
+  id          String          @id
+  propertyId  String
+  property    Property        @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  unitId      String?
+  unit        RentalUnit?     @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  paidOn      DateTime        @db.Date
+  amount      Decimal         @db.Decimal(16, 2)
+  category    ExpenseCategory
+  description String
+  vendor      String?
+  createdAt   DateTime        @default(now())
+  voidedOn    DateTime?       @db.Date
+  voidReason  String?
+
+  documents Document[]
+
+  @@index([propertyId, paidOn])
+  @@index([paidOn])
+  @@index([unitId])
+}
+
+enum DocumentType {
+  EXPOSE
+  CONTRACT
+  PHOTO
+  INVOICE
+  STATEMENT
+  OTHER
+}
+
+model Document {
+  id                   String              @id
+  propertyId           String?
+  property             Property?           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  acquisitionProjectId String?
+  acquisitionProject   AcquisitionProject? @relation(fields: [acquisitionProjectId], references: [id], onDelete: Restrict)
+  unitId               String?
+  unit                 RentalUnit?         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  leaseId              String?
+  lease                Lease?              @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  expenseId            String?
+  expense              Expense?            @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  type                 DocumentType
+  filename             String
+  mime                 String
+  size                 Int
+  sha256               String
+  description          String              @default("")
+  createdAt            DateTime            @default(now())
+
+  @@index([propertyId, createdAt])
+  @@index([unitId])
+  @@index([leaseId])
+  @@index([acquisitionProjectId, createdAt])
+  @@index([expenseId])
+}
+
+enum ReportType {
+  BANK_PACKAGE
+  PROPERTY
+  RENT
+  TENANTS
+  PAYMENTS
+  ARREARS
+  CASHFLOW
+  ANNUAL
+}
+
+enum ReportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+}
+
+model ReportJob {
+  id          String       @id
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  propertyId  String?
+  property    Property?    @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  type        ReportType
+  period      DateTime     @db.Date
+  months      Int
+  status      ReportStatus @default(QUEUED)
+  attempts    Int          @default(0)
+  availableAt DateTime     @default(now())
+  leaseUntil  DateTime?
+  finishedAt  DateTime?
+  failure     String?
+  createdAt   DateTime     @default(now())
+
+  bankSnapshot BankSnapshot?
+
+  @@index([status, availableAt])
+  @@index([userId, createdAt])
+  @@index([propertyId])
+}
+
+model RentGenerationRun {
+  day          DateTime @id @db.Date
+  period       DateTime @db.Date
+  createdCount Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+enum ScenarioKind {
+  CONSERVATIVE
+  BASE
+  OPTIMISTIC
+}
+
+model AcquisitionProject {
+  id                 String                @id
+  name               String
+  street             String
+  houseNumber        String
+  postalCode         String
+  city               String
+  state              String
+  type               PropertyType
+  builtYear          Int?
+  landArea           Decimal?              @db.Decimal(12, 2)
+  livingArea         Decimal               @db.Decimal(12, 2)
+  purchaseDate       DateTime?             @db.Date
+  purchasePrice      Decimal               @db.Decimal(14, 2)
+  description        String                @default("")
+  condition          String                @default("")
+  renovationNotes    String                @default("")
+  expectedAnnualRent Decimal               @db.Decimal(16, 2)
+  vacancyRate        Decimal               @db.Decimal(7, 4)
+  convertedAt        DateTime?
+  acquiredPropertyId String?               @unique
+  acquiredProperty   Property?             @relation(fields: [acquiredPropertyId], references: [id], onDelete: Restrict)
+  version            Int                   @default(0)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  scenarios          AcquisitionScenario[]
+  documents          Document[]
+
+  bankSnapshots BankSnapshot[]
+
+  @@index([convertedAt, name])
+}
+
+model AcquisitionScenario {
+  id              String             @id @default(uuid())
+  projectId       String
+  project         AcquisitionProject @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  kind            ScenarioKind
+  assumptionsOn   DateTime           @db.Date
+  source          String             @default("")
+  transferTaxRate Decimal            @db.Decimal(7, 4)
+  notaryRate      Decimal            @db.Decimal(7, 4)
+  registryRate    Decimal            @db.Decimal(7, 4)
+  brokerRate      Decimal            @db.Decimal(7, 4)
+  renovation      Decimal            @db.Decimal(16, 2)
+  otherCosts      Decimal            @db.Decimal(16, 2)
+  reserve         Decimal            @db.Decimal(16, 2)
+  equity          Decimal            @db.Decimal(16, 2)
+  annualRent      Decimal            @db.Decimal(16, 2)
+  vacancyRate     Decimal            @db.Decimal(7, 4)
+  lossRate        Decimal            @db.Decimal(7, 4)
+  ownerCosts      Decimal            @db.Decimal(16, 2)
+  maintenance     Decimal            @db.Decimal(16, 2)
+  loans           AcquisitionLoan[]
+
+  @@unique([projectId, kind])
+}
+
+model AcquisitionLoan {
+  id               String              @id
+  scenarioId       String
+  scenario         AcquisitionScenario @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
+  label            String
+  principal        Decimal             @db.Decimal(16, 2)
+  annualRate       Decimal             @db.Decimal(7, 4)
+  initialRepayment Decimal             @db.Decimal(7, 4)
+  fixedMonths      Int
+  startsMonth      Int                 @default(1)
+  refinancesId     String?             @unique
+  refinances       AcquisitionLoan?    @relation("Refinancing", fields: [refinancesId], references: [id], onDelete: Restrict)
+  refinancedBy     AcquisitionLoan?    @relation("Refinancing")
+  archivedAt       DateTime?
+  extraPayments    LoanExtraPayment[]
+
+  @@index([scenarioId])
+}
+
+model LoanExtraPayment {
+  loanId String
+  loan   AcquisitionLoan @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  month  Int
+  amount Decimal         @db.Decimal(16, 2)
+
+  @@id([loanId, month])
+}
+
+model BankSnapshot {
+  jobId         String             @id
+  job           ReportJob          @relation(fields: [jobId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  projectId     String
+  project       AcquisitionProject @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  version       Int
+  formatVersion Int
+  createdAt     DateTime           @default(now())
+  payload       Json
+
+  @@unique([projectId, version])
+}
