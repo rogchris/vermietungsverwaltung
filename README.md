@@ -1,32 +1,33 @@
 # Vermietungsverwaltung
 
-Privater Arbeitsbereich für eine Immobilienverwaltung in deutscher Sprache. Die Anwendung verwaltet Immobilien, Einheiten, Mieterkontakte und Mietverträge mit historisierten Mietkonditionen. Der Zugang ist durch Passwort und zweiten Faktor geschützt. Mietforderungen, Zahlungen, Ausgaben, geschützte Dokumente und PDF-Berichte sind angebunden.
+Eine deutschsprachige Webanwendung, die Immobilien, Mietverträge, Zahlungen und zugehörige Dokumente in einem Arbeitsbereich zusammenführt.
+
+Aus einem Mietvertrag und seinen zeitlich gültigen Konditionen entstehen monatliche Forderungen. Zahlungen und Ausgaben werden getrennt erfasst. Geschützte Dokumente und PDF-Berichte sind über dieselbe Oberfläche erreichbar.
+
+- **Stammdaten und Verträge** · Immobilien, Einheiten, Mieterkontakte, Vertragsparteien und historisierte Mietkonditionen.
+- **Finanzen** · Monatsforderungen, Teilzahlungen und Ausgaben. Fachregeln beschreibt die [Finanzdokumentation](docs/FINANCE.md).
+- **Dokumente und Berichte** · Geschützte Uploads, PDF-Erzeugung im Hintergrund und Berichte mit zugeordneten Anlagen.
+- **Ankauf und Bankmappe** · Erfassung und Berechnung von Ankaufsszenarien sowie Zusammenstellung einer Bankmappe. [Ankauf](docs/ACQUISITION.md) · [Bankmappe](docs/BANK_PACKAGE.md)
+
+## Aufbau
+
+Next.js und TypeScript bilden Oberfläche und serverseitige Aktionen. Prisma und PostgreSQL speichern Stammdaten, Finanzvorgänge und Berichtsaufträge. Ein separater Worker verarbeitet PDF-Aufträge. Dateien liegen außerhalb des öffentlich ausgelieferten Verzeichnisses. [Architektur](docs/ARCHITECTURE.md) · [Datenbank](docs/DATABASE.md)
 
 ## Lokal starten
 
-Voraussetzungen sind Node.js aus `.node-version`, npm 11 und PostgreSQL 17. Docker Compose kann die lokale Datenbank starten. Eine native PostgreSQL-Instanz mit eigener Datenbank und Zugangsdaten funktioniert ebenfalls.
+Voraussetzungen sind Node.js aus der Datei `.node-version`, npm 11 und PostgreSQL 17. Docker Compose kann die lokale Datenbank bereitstellen.
 
-1. `.env.example` nach `.env` kopieren. Einen zufälligen `POSTGRES_PASSWORD` und einen separaten `BETTER_AUTH_SECRET` mit mindestens 32 Zeichen eintragen. Ein geeigneter Generator ist `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`.
-2. `DATABASE_URL` als `postgresql://vermietung:PASSWORT@127.0.0.1:5432/vermietung` setzen. Bei Sonderzeichen im Passwort URL-Kodierung verwenden.
-3. `docker compose up -d --wait postgres` ausführen oder eine bestehende lokale PostgreSQL-Instanz bereitstellen.
-4. `npm ci`, `npm run db:generate` und `npm run db:deploy` ausführen.
-5. `npm run admin:create` im Terminal ausführen und die eigenen Kontodaten eingeben.
-6. `npm run dev -- --hostname 127.0.0.1` starten und `http://localhost:3000` öffnen. Beim ersten Login den Authenticator einrichten und die Wiederherstellungscodes sicher ablegen.
+1. `.env.example` nach `.env` kopieren. Ein eigenes Datenbankpasswort, die dazu passende `DATABASE_URL` und ein separates zufälliges `BETTER_AUTH_SECRET` mit mindestens 32 Zeichen setzen. Sonderzeichen im Passwort innerhalb der URL kodieren.
+2. PostgreSQL mit `docker compose up -d --wait postgres` starten oder eine eigene lokale Instanz mit separater Datenbank verwenden.
+3. `npm ci`, `npm run db:generate` und `npm run db:deploy` ausführen.
+4. `npm run admin:create` ausführen und lokale Testzugangsdaten eingeben.
+5. `npm run dev -- --hostname 127.0.0.1` starten. Unter [localhost:3000](http://localhost:3000) anmelden und den zweiten Faktor einrichten.
+6. Für Berichtsaufträge `npm run worker` in einem zweiten Terminal starten. Die vorgesehene Chromium-Installation und die Voraussetzungen für PDF-Exporte stehen in der Test- und Betriebsdokumentation.
 
-`/api/health` prüft die Datenbankverbindung und meldet HTTP 503, wenn PostgreSQL nicht erreichbar ist.
+Der [synthetische Demo-Ablauf](docs/DEMO.md) zeigt einen Vertrag, eine Monatsforderung, eine Teilzahlung und einen PDF-Bericht.
 
-[Prüfungen](docs/TESTING.md) · [Architektur](docs/ARCHITECTURE.md)
+## Prüfungen und Betrieb
 
-## Stammdaten
+`npm run lint`, `npm run typecheck` und `npm test` prüfen den Quellstand nach der Prisma-Generierung. Integrations- und Browsertests verwenden eine separate Testdatenbank und synthetische Daten. [Tests](docs/TESTING.md)
 
-Im Arbeitsbereich findest du **Immobilien**, **Mieter** und **Mietverträge**. Einheiten legst du in der jeweiligen Immobilie an und Verträge in der jeweiligen Einheit. Ein Vertrag kann mehrere Mieter enthalten. Über **Mietänderung erfassen** ergänzt du eine Kondition mit Wirksamkeitsdatum.
-
-Automatisierte Prüfungen nutzen eigene Konten und synthetische Stammdaten in der separaten Testdatenbank. Dein persönliches Administratorkonto ist nur für die eigene Nutzung erforderlich.
-
-## Finanzverwaltung und PDF-Worker
-
-Über **Finanzen** können Monatsforderungen erzeugt und Zahlungen oder Ausgaben verbucht werden. Dokumente und Berichte sind unter **Mehr** erreichbar. Starte für die PDF-Erstellung in einem zweiten Terminal npm run worker. Der Worker verarbeitet die Warteschlange und ergänzt einmal pro Berliner Kalendertag die Forderungen des aktuellen Monats.
-
-Private Dateien liegen lokal standardmäßig in .private-data. APP_DATA_DIR überschreibt diesen Pfad. Der optionale lokale Virenscanner wird über CLAMAV_HOST angebunden. Die Produktionskonfiguration verlangt einen erreichbaren Scanner und sichere HTTPS-Cookies.
-
-[Finanzregeln](docs/FINANCE.md) · [Deployment](docs/DEPLOYMENT.md) · [Backup und Restore](docs/BACKUP_RESTORE.md)
+Der Zugang erfordert eine Sitzung mit eingerichtetem zweiten Faktor. Für einen Betrieb mit echten Daten sind HTTPS, sichere Zugangsdaten, der vorgesehene Upload-Scanner und geprüfte Wiederherstellung relevant. [Sicherheit](docs/SECURITY.md) · [Deployment](docs/DEPLOYMENT.md) · [Backup und Restore](docs/BACKUP_RESTORE.md)
