@@ -22,3 +22,16 @@ Listen und Detailseiten prüfen die Sitzung und den zweiten Faktor vor dem Daten
 ## Finanzen, private Dateien und Worker
 
 Dashboard, Finanzübersicht und PDF-Berichte nutzen denselben Finanzservice. Der Server hält Geld in Decimal. Zeitabhängige Buchungen und Zuordnungen bewahren ihre Originalwerte. Dokumentmetadaten und Jobstatus liegen in PostgreSQL, Binärdateien in privaten Verzeichnissen. Der Worker übernimmt Jobs atomar, rendert isoliertes HTML und schreibt Ergebnisse nur für den noch gültigen Versuch fest. Außerdem erzeugt er Forderungen für den laufenden Monat einmal pro Berliner Kalendertag.
+
+## Anwendung und PDF-Worker
+
+```mermaid
+flowchart TD
+    Browser["Browser: Verträge, Finanzen und Dokumente"] --> App["Next.js: Seiten, Server Actions und Downloads"]
+    App --> Auth["Better Auth: Sitzung und zweiter Faktor"]
+    App --> Domain["Fachmodule: Verträge, Zahlungen, Dokumente"]
+    Domain --> DB["Prisma / PostgreSQL: Daten, Forderungen und Aufträge"]
+    Domain --> Storage["Privater Dateispeicher"]
+    Worker["Separater PDF-Worker"] --> DB
+    Worker --> Storage
+```

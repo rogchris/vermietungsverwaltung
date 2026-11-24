@@ -42,13 +42,13 @@ test("bucht Teilzahlungen, lädt Belege hoch und lädt einen erzeugten PDF-Beric
     await page.getByRole("button", { name: "Mietforderungen erzeugen" }).click();
     await expect(page.getByRole("status")).toHaveText("1 neue Mietforderungen erzeugt.");
     await page.getByText("Zahlung erfassen", { exact: true }).click();
-    await page.locator("details[open]").filter({ hasText: "Zahlung erfassen" }).getByLabel("Betrag (EUR)").fill("500");
+    await page.locator("details[open]").filter({ hasText: "Zahlung erfassen" }).getByLabel("Betrag (EUR)").fill("600");
     await page.getByRole("button", { name: "Zahlung speichern" }).click();
     await expect(page.getByRole("status")).toHaveText("Änderung gespeichert.");
     await page.getByText("Zahlung bearbeiten", { exact: true }).click();
-    await page.getByRole("button", { name: "Betrag zuordnen" }).locator("..").locator("..").getByLabel("Betrag (EUR)").fill("500");
+    await page.getByRole("button", { name: "Betrag zuordnen" }).locator("..").locator("..").getByLabel("Betrag (EUR)").fill("600");
     await page.getByRole("button", { name: "Betrag zuordnen" }).click();
-    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Mietforderungen", exact: true }) }).getByText("400,00 €", { exact: true })).toBeVisible();
+    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Mietforderungen", exact: true }) }).getByText("300,00 €", { exact: true })).toBeVisible();
 
     await page.goto("/dokumente?objekt=" + propertyId);
     const malformed = await page.request.post("/api/dokumente", {
@@ -66,9 +66,11 @@ test("bucht Teilzahlungen, lädt Belege hoch und lädt einen erzeugten PDF-Beric
     await input.setInputFiles({ name: "ungültig.png", mimeType: "image/png", buffer: Buffer.from("synthetisch aber ungültig") });
     await page.getByRole("button", { name: "Dokument hochladen" }).click();
     await expect(page.getByRole("main").getByRole("alert")).toContainText("PDF, JPEG oder PNG");
-    await input.setInputFiles({ name: "testbeleg.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/uikAAAAASUVORK5CYII=", "base64") });
+    const guide = await PDFDocument.create();
+    guide.addPage().drawText("Demo-Beleg A01 - fiktiv");
+    await input.setInputFiles({ name: "demo-beleg-a01.pdf", mimeType: "application/pdf", buffer: Buffer.from(await guide.save()) });
     await page.getByRole("button", { name: "Dokument hochladen" }).click();
-    const link = page.getByRole("link", { name: "testbeleg.png" });
+    const link = page.getByRole("link", { name: "demo-beleg-a01.pdf" });
     await expect(link).toBeVisible();
     const href = (await link.getAttribute("href"))!;
     expect((await request.get(href)).status()).toBe(401);
@@ -93,7 +95,7 @@ test("bucht Teilzahlungen, lädt Belege hoch und lädt einen erzeugten PDF-Beric
     expect(archive.headers()["cache-control"]).toContain("no-store");
     const bytes = await archive.body();
     expect(bytes.subarray(0, 10).toString()).toBe("daten.json");
-    expect(bytes.includes(Buffer.from("testbeleg.png"))).toBe(true);
+    expect(bytes.includes(Buffer.from("demo-beleg-a01.pdf"))).toBe(true);
     expect(bytes.includes(Buffer.from(user.password))).toBe(false);
     await page.goto("/dashboard?monat=" + month + "&objekt=" + propertyId);
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();

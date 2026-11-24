@@ -57,29 +57,40 @@ it("friert Version, Rechenwerte, Eingaben und Anlagen ein und rendert nach einer
     expect(bankPayload(second).scenarios[0].assumptions.annualRent).toBe("20000");
     expect(bankPayload(await db.bankSnapshot.findUniqueOrThrow({ where: { jobId: first.jobId } }))).toEqual(before);
 
-    let renderedPages = 0;
+    const fixturePdf = await PDFDocument.create();
+    for (let index = 0; index < 3; index++) fixturePdf.addPage();
+    const fixtureBytes = await fixturePdf.save();
+    const renderedHtml: string[] = [];
     for (let index = 0; index < 3; index++) {
       expect(await processNextReport(async (html) => {
-        expect(html).toContain("Inhaltsverzeichnis");
-        expect(html).toContain("Tilgungsplan");
-        expect(html).toContain("Synthetisches Prüfmerkmal");
-        if (html.includes("Version 1")) {
-          expect(html).toContain("&lt;script&gt;");
-          expect(html).not.toContain("Neuer Projektname");
-          expect(html).toContain("12.000,00");
-        }
-        const rendered = await renderPdf(html);
-        if (html.includes("Version 1")) renderedPages = (await PDFDocument.load(rendered)).getPageCount();
-        return rendered;
+        renderedHtml.push(html);
+        return fixtureBytes;
       })).toBe(true);
     }
+    for (const snapshot of [first, second, third]) {
+      const job = await db.reportJob.findUniqueOrThrow({ where: { id: snapshot.jobId } });
+      expect(job.status, job.failure ?? 'Bericht muss fertig sein').toBe("READY");
+    }
+    expect(renderedHtml).toHaveLength(3);
+    for (const html of renderedHtml) {
+      expect(html).toContain("Inhaltsverzeichnis");
+      expect(html).toContain("Tilgungsplan");
+      expect(html).toContain("Synthetisches Prüfmerkmal");
+    }
+    const firstHtml = renderedHtml.find((html) => html.includes("Version 1"));
+    expect(firstHtml).toBeDefined();
+    expect(firstHtml).toContain("&lt;script&gt;");
+    expect(firstHtml).not.toContain("Neuer Projektname");
+    expect(firstHtml).toContain("12.000,00");
+
     const ready = await db.reportJob.findUniqueOrThrow({ where: { id: first.jobId } });
-    expect(ready.status).toBe("READY");
     const pdf = await readPrivate("reports", artifactName(ready.id, ready.attempts));
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(renderedPages).toBeGreaterThan(2);
-    expect((await PDFDocument.load(pdf)).getPageCount()).toBe(renderedPages + 1);
-    if (process.env.BANK_QA_PDF) await writeFile(process.env.BANK_QA_PDF, pdf);
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBe(fixturePdf.getPageCount() + 1);
+    if (process.env.BANK_QA_PDF && firstHtml) {
+      const { appendBankAttachments } = await import("../../src/modules/bank-package/attachments");
+      await writeFile(process.env.BANK_QA_PDF, await appendBankAttachments(await renderPdf(firstHtml), before));
+    }
   } finally { await other.dispose(); await user.dispose(); }
 }, 90_000);
 
