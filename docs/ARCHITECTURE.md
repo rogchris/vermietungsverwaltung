@@ -1,8 +1,8 @@
 # Architektur
 
-Der modulare Monolith nutzt Next.js App Router im Node.js-Runtime. PostgreSQL hält fachliche Daten und Authentifizierungszustand. Prisma-Migrationen definieren das Schema. Der spätere Worker verarbeitet persistente Jobs im selben Datenmodell. Dokumente und Berichte erhalten private Speicherpfade.
+Die Webanwendung nutzt den Next.js App Router unter Node.js. PostgreSQL speichert Fach- und Sitzungsdaten. Prisma-Migrationen definieren das Schema. Ein separater Worker liest PDF-Aufträge aus derselben Datenbank. Dokumente und fertige Berichte liegen im privaten Dateispeicher.
 
-Die Architekturgrenzen verlaufen zwischen Routing und Darstellung in `src/app`, UI-Bausteinen in `src/components`, Anwendungsdiensten in `src/modules` und technischer Infrastruktur in `src/lib`. Authentication und die vier Stammdatenmodule Properties, Rental Units, Tenants und Leases sind angebunden. Finanzen, Dokumente, Dashboard, Berichte und Administration besitzen eigene Fachservices. Ankauf und Finanzierung werden danach ergänzt.
+`src/app` enthält Seiten, Server Actions und Downloads. Wiederverwendbare UI-Bausteine liegen in `src/components`, die Fachlogik in `src/modules` und die technische Infrastruktur in `src/lib`. Die Fachmodule decken unter anderem Stammdaten, Verträge, Finanzen, Dokumente, Berichte, Ankauf und Bankmappen ab.
 
 ## Entscheidung zur Authentifizierung
 
